@@ -1,0 +1,398 @@
+import pygame
+import random
+import os
+import math
+
+Width=800
+Height=600
+FPS=30
+GROUND=Height-30
+
+#Constants
+PLAYER_ACC=0.9
+PLAYER_FRICTION=-0.12
+PLAYER_GRAV=0.9
+vec=pygame.math.Vector2
+
+#Define Colors
+White=(255,255,255)
+Black=(0,0,0)
+Black2=(1,1,1)
+Red=(255,0,0)
+Green=(0,255,0)
+Blue=(0,0,255)
+Background=(120,0,0)
+
+
+#Asset Folders
+game_folder=os.path.dirname(__file__)
+img_folder=os.path.join(game_folder, "img")
+snd_folder=os.path.join(game_folder, "snd")
+
+
+#Draw Text Function
+font_name=pygame.font.match_font('times new roman')
+def draw_text(surf, text, size, x, y):
+    font=pygame.font.Font(font_name, size)
+    text_surface=font.render(text, True, Red)
+    text_rect=text_surface.get_rect()
+    text_rect.midtop=(x,y)
+    surf.blit(text_surface, text_rect)
+    
+#Show Start Screen
+def show_start_screen():
+
+    screen.fill(Black)
+    draw_text(screen, "Zombie Survival", 64, Width/2, Height/4)
+    draw_text(screen, "A and D to move, Space to jump, Mouse to fire", 22, Width/2, Height/2)
+    draw_text(screen, "Press any key to continue", 18, Width/2, Height*3/4)
+    pygame.display.flip()
+
+    waiting=True
+    while waiting:
+        clock.tick(FPS)
+
+        for event in pygame.event.get():
+            if event.type==pygame.QUIT:
+                pygame.quit()
+            if event.type==pygame.KEYUP:
+                print("Starting Game...")
+                waiting=False
+
+#Show End Screen
+def show_end_screen():
+
+    screen.fill(Black)
+    draw_text(screen, "G A M E  O V E R", 64, Width/2, Height/4)
+    draw_text(screen, "Press any key to continue", 22, Width/2, Height*3/4)
+    pygame.display.flip()
+
+    waiting=True
+    while waiting:
+        clock.tick(FPS)
+
+        for event in pygame.event.get():
+            if event.type==pygame.QUIT:
+                pygame.quit()
+            if event.type==pygame.KEYUP:
+                waiting=False
+                
+#Player Class
+class Player(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+
+        #Add Player Image
+        Right= self.player=[
+            pygame.image.load(os.path.join(img_folder, "Joe Bloe0.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "Joe Bloe1.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "Joe Bloe2.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "Joe Bloe3.png")).convert()
+            ]
+        self.player_count = 1
+
+                    
+        self.image=self.player[self.player_count]
+        self.image=pygame.transform.scale(self.image, (63,93))
+        self.image.set_colorkey(Black2)
+        self.rect=self.image.get_rect()
+        self.rect.center=(Width /2, Height/2)
+        self.rect.bottom=(GROUND)
+
+        self.actions=["RIGHT", "LEFT", "NONE"]
+        self.action="NONE"
+
+        self.pos=vec(10, GROUND-60)
+        self.vel=vec(0,0)
+        self.acc=vec(0,0)
+
+        self.speedx=0
+        self.shield=100
+        self.shoot_delay=500
+        self.last_shot=pygame.time.get_ticks()
+
+    def update(self):
+        self.action="NONE"
+        self.acc=vec(0, PLAYER_GRAV)
+        #Returns a list of all pressed keys
+        keystate=pygame.key.get_pressed()
+
+
+        #Checks to see which keys were in the list (or pressed)
+        if keystate[pygame.K_d]:
+            self.acc.x+=PLAYER_ACC
+            self.action="RIGHT"
+        if keystate[pygame.K_a]:
+            self.acc.x+=-PLAYER_ACC
+            self.action="LEFT"
+        if self.vel.y==0 and keystate[pygame.K_SPACE]:
+            self.vel.y=-20
+
+        self.rect.x+=self.speedx
+
+        if self.action=="RIGHT":
+            self.image=self.player[self.player_count]
+            self.image=pygame.transform.scale(self.image, (63,93))
+            self.image.set_colorkey(Black2)
+        self.player_count+=1
+        if self.player_count>3:
+            self.player_count=0
+    #Apply Friction in the X Direction
+        self.acc.x+=self.vel.x*PLAYER_FRICTION
+
+    #Equations of Motion
+        self.vel+=self.acc
+        self.pos+=self.vel+0.5*self.acc
+
+    #Wrap Around the Screen
+        if self.pos.x>Width:
+            self.pos.x=0
+        if self.pos.x<0:
+            self.pos.x=Width
+
+    #Simulate Ground
+        if self.pos.y>GROUND:
+            self.pos.y=GROUND+1
+            self.vel.y=0
+
+        self.rect.midbottom=self.pos
+    #Check for Mouse event
+        mouseState=pygame.mouse.get_pressed()
+        if mouseState[0]==1:
+            pos=pygame.mouse.get_pos()
+            mouse_x=pos[0]
+            mouse_y=pos[1]
+
+            self.shoot(mouse_x, mouse_y)
+
+    def shoot(self, mouse_x, mouse_y):
+        now=pygame.time.get_ticks()
+        if now-self.last_shot>self.shoot_delay:
+            self.last_shot=now
+            bullet=Bullet(self.rect.right, self.rect.centery, mouse_x, mouse_y)
+            all_sprites.add(bullet)
+            bullets.add(bullet)
+            
+            
+
+#Platform Class
+class Platform(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.image=pygame.Surface((100,20))
+        self.image.fill(Green)
+        self.rect=self.image.get_rect()
+        self.rect.center=(Width /2, Height /2)
+
+    def update(self):
+        self.rect.x-=5
+        if self.rect.right<0:
+            self.rect.left=Width
+
+#Bullet Class
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, start_x, start_y, dest_x, dest_y):
+        pygame.sprite.Sprite.__init__(self)
+
+        self.bullets=[
+            pygame.image.load(os.path.join(img_folder, "Bullet0.png")).convert()
+            ]
+
+        self.image=self.bullets[0]
+        self.image=pygame.transform.scale(self.image, (22,13))
+        self.image.set_colorkey(Black2)
+        
+        #ESTABLISH RECT, STARTING POSITION
+        self.rect = self.image.get_rect()
+        self.rect.left = start_x
+        self.rect.bottom = start_y
+
+        #MAKE STARTING POINT MORE ACCURATE
+        self.floating_point_x = start_x
+        self.floating_point_y = start_y
+
+        #DIFFERENCE BTW START AND DEST PTS
+        x_diff = dest_x - start_x
+        y_diff = dest_y - start_y
+        angle = math.atan2(y_diff, x_diff)
+
+        #APPLY VELOCITY
+        self.speedx = 20
+        self.change_x = math.cos(angle) * self.speedx
+        self.change_y = math.sin(angle) * self.speedx
+
+    def update(self):
+         # The floating point x and y hold our more accurate location.
+        self.floating_point_y += self.change_y
+        self.floating_point_x += self.change_x
+ 
+        # The rect.x and rect.y are converted to integers.
+        self.rect.y = int(self.floating_point_y)
+        self.rect.x = int(self.floating_point_x)
+
+        #DELETE LASER ONCE OFF SCREEN
+        # If the bullet flies of the screen, get rid of it
+        if self.rect.x < 0 or self.rect.x > Width or self.rect.y < 0 or self.rect.y > Height:
+            self.kill()
+
+        hits=pygame.sprite.groupcollide(mobs, bullets, True, True)
+        for hit in hits:
+            newMob()
+
+#Enemy Class
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+
+        self.enemy=[
+            pygame.image.load(os.path.join(img_folder, "Zombie Healthbar0.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "Zombie Healthbar1.png")).convert()
+            ]
+        
+        self.enemy_count=0
+
+        self.image=self.enemy[self.enemy_count]
+        self.image=pygame.transform.scale(self.image, (63,93))
+        self.image.set_colorkey(Black)
+        self.rect=self.image.get_rect()
+        self.rect.center=(Width, Height/2)
+        self.rect.bottom=(GROUND)
+            
+    def update(self):
+        self.image=self.enemy[self.enemy_count]
+        self.image=pygame.transform.scale(self.image, (63,93))
+        self.image.set_colorkey(Black)
+
+        self.enemy_count=1
+        
+        self.rect.x-=5
+        if self.rect.right<0:
+            self.rect.left=Width
+            
+#Enemy Healthbar
+    def getHeatlh(self):
+        return self.healthbar_count
+
+    def setHealth(self):
+        if health==1:
+            self.healthbar_count-=1
+            if self.healthbar_count<0:
+                self.healthbar_count=0
+        elif health==-1:
+            self.healthbar_count+=1
+            if self.healthbar_count>1:
+                self.healthbar_count=1
+                
+#Healthbar Class
+class HealthBar(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+
+        self.healthbars=[
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar0.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar1.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar2.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar3.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar4.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar5.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar6.png")).convert(),
+            pygame.image.load(os.path.join(img_folder, "sprite_Healthbar7.png")).convert()
+            ]
+        self.healthbar_count=0
+
+        self.image=self.healthbars[self.healthbar_count]
+        self.image=pygame.transform.scale(self.image, (100, 20))
+        self.image.set_colorkey(Black)
+
+        #Healthbar Position
+        self.rect=self.image.get_rect()
+        self.rect.x=10
+        self.rect.y=10
+
+    def getHealth(self):
+        return self.healthbar_count
+    
+    #Increasing and Decreasing Health
+    def setHealth(self, health):
+        if health==1:
+            self.healthbar_count-=1
+            if self.healthbar_count<0:
+                self.healthbar_count=0
+        elif health==-1:
+            self.healthbar_count+=1
+            if self.healthbar_count>7:
+                self.healthbar_count=7
+
+    def update(self):
+        self.image=self.healthbars[self.healthbar_count]
+        self.image=pygame.transform.scale(self.image, (100, 20))
+        self.image.set_colorkey(Black2)
+#Initialize Variables
+pygame.init()
+pygame.mixer.init()
+screen=pygame.display.set_mode((Width, Height))
+pygame.display.set_caption("My Game")
+
+clock=pygame.time.Clock()
+
+#Load Sounds
+#pygame.mixer.music.load(os.path.join(snd_folder, "263774_scotcampbell_strange-music.wav"))
+#pygame.mixer.music.set_volume(0.2)
+
+#pygame.mixer.music.play(loops=-1)
+
+#Sprite Groups
+all_sprites=pygame.sprite.Group()
+bullets=pygame.sprite.Group()
+player=Player()
+all_sprites.add(player)
+platform=Platform()
+all_sprites.add(platform)
+healthBar=HealthBar()
+all_sprites.add(healthBar)
+mobs=pygame.sprite.Group()
+
+
+#Mobs
+def newMob():
+    zombie=Enemy()
+    all_sprites.add(zombie)
+    mobs.add(zombie)
+
+newMob()
+
+#Game Loop
+start=True
+running=True
+while running:
+    clock.tick(FPS)
+    if start:
+        show_start_screen()
+        start=False
+    #Process Events
+    for event in pygame.event.get():
+        if event.type==pygame.QUIT:
+            running=False
+        if event.type==pygame.KEYUP:
+            if event.key==pygame.K_q:
+                print("show_end_screen")
+                show_end_screen()
+            
+  #Collison with Enemy
+    hits=pygame.sprite.spritecollide(player, mobs, True)
+    for hit in hits:
+        healthBar.setHealth(-1)
+        newMob()
+        
+    #Update
+    all_sprites.update()
+
+    #Draw
+    screen.fill(Background)
+    all_sprites.draw(screen)
+
+    #Flip After Drawing
+    pygame.display.flip()
+
+pygame.quit()
+                        
